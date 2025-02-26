@@ -5,6 +5,14 @@ import psycopg2
 from datetime import datetime
 
 def map_score_to_level(score):
+    """
+    Mapea un puntaje numérico a uno de los niveles:
+    -2 -> "strong sell"
+    -1 -> "sell"
+     0 -> "neutral"
+     1 -> "buy"
+     2 -> "strong buy"
+    """
     if score <= -1.5:
         return "strong sell"
     elif score <= -0.5:
@@ -63,7 +71,7 @@ def insert_stock_analysis(total_summary, tech_summary, ma_action, rsi_signal, ma
         ticker
     ))
     conn.commit()
-    print("Datos insertados en PostgreSQL")
+    print(f"Datos insertados en PostgreSQL para {ticker}")
     cur.close()
     conn.close()
 
@@ -127,24 +135,48 @@ def calculate_moving_averages(data, price):
         score_ma = -2
     return map_score_to_level(score_ma), score_ma
 
+def process_ticker(ticker):
+    try:
+        data = yf.download(ticker, period="1y", interval="1d")
+        if data.empty:
+            print(f"No se obtuvieron datos para {ticker}")
+            return
+        price = float(data['Close'].iloc[-1].item())
+        rsi_signal, score_rsi = calculate_rsi(data)
+        macd_action, score_macd = calculate_macd(data)
+        ma_action, score_ma = calculate_moving_averages(data, price)
+        tech_score = (score_rsi + score_macd) / 2.0
+        tech_summary = map_score_to_level(tech_score)
+        total_score = (tech_score + score_ma) / 2.0
+        total_summary = map_score_to_level(total_score)
+        print(f"Ticker: {ticker}")
+        print("  Total Summary:", total_summary)
+        print("  Technical Indicators Summary:", tech_summary)
+        print("  Moving Averages Summary:", ma_action)
+        print("  RSI Action:", rsi_signal)
+        print("  MACD Action:", macd_action)
+        print("  Precio:", round(price, 2))
+        insert_stock_analysis(total_summary, tech_summary, ma_action, rsi_signal, macd_action, price, ticker)
+    except Exception as e:
+        print(f"Error al procesar {ticker}: {e}")
+
 def main():
-    ticker = "TSLA"
-    data = yf.download(ticker, period="1y", interval="1d")
-    price = float(data['Close'].iloc[-1].item())
-    rsi_signal, score_rsi = calculate_rsi(data)
-    macd_action, score_macd = calculate_macd(data)
-    ma_action, score_ma = calculate_moving_averages(data, price)
-    tech_score = (score_rsi + score_macd) / 2.0
-    tech_summary = map_score_to_level(tech_score)
-    total_score = (tech_score + score_ma) / 2.0
-    total_summary = map_score_to_level(total_score)
-    print("Total Summary:", total_summary)
-    print("Technical Indicators Summary:", tech_summary)
-    print("Moving Averages Summary:", ma_action)
-    print("RSI Action:", rsi_signal)
-    print("MACD Action:", macd_action)
-    print("Precio:", round(price, 2))
-    insert_stock_analysis(total_summary, tech_summary, ma_action, rsi_signal, macd_action, price, ticker)
+    # 10 empresas más importantes de USA (según algunos índices, puedes ajustar la lista)
+    usa_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JNJ", "V", "WMT"]
+    # 10 empresas importantes de Argentina (tickers de la bolsa de Buenos Aires; ajusta según convenga)
+    argentina_tickers = ["GGAL.BA", "YPF.BA", "PAMP.BA", "TEO.BA", "CEPU.BA", "SUPV.BA", "ALUA.BA", "BMA.BA", "EDN.BA", "COME.BA"]
+    # 10 criptomonedas importantes (tickers de Yahoo Finance)
+    crypto_tickers = ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD", "SOL-USD", "DOT-USD", "DOGE-USD", "LTC-USD", "MATIC-USD"]
+
+    print("Procesando empresas USA...")
+    for ticker in usa_tickers:
+        process_ticker(ticker)
+    print("Procesando empresas Argentina...")
+    for ticker in argentina_tickers:
+        process_ticker(ticker)
+    print("Procesando criptomonedas...")
+    for ticker in crypto_tickers:
+        process_ticker(ticker)
 
 if __name__ == "__main__":
     main()
