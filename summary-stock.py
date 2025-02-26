@@ -1,8 +1,23 @@
+from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
+import dateparser
 import yfinance as yf
 import pandas as pd
 import numpy as np
 import psycopg2
-from datetime import datetime
+
+# Configuración de conexión a la DB
+DB_PARAMS = {
+    "host": "localhost",
+    "database": "stocks_db",
+    "user": "postgres",
+    "password": ""
+}
+
+###############################################
+# Funciones para análisis de indicadores
+###############################################
 
 def map_score_to_level(score):
     """
@@ -25,12 +40,7 @@ def map_score_to_level(score):
         return "strong buy"
 
 def insert_stock_analysis(total_summary, tech_summary, ma_action, rsi_signal, macd_action, price, ticker):
-    conn = psycopg2.connect(
-        host="localhost",
-        database="stocks_db",
-        user="postgres",
-        password=""
-    )
+    conn = psycopg2.connect(**DB_PARAMS)
     cur = conn.cursor()
     create_table_query = """
     CREATE TABLE IF NOT EXISTS stock_analysis (
@@ -47,7 +57,21 @@ def insert_stock_analysis(total_summary, tech_summary, ma_action, rsi_signal, ma
     """
     cur.execute(create_table_query)
     conn.commit()
+
     analysis_date = datetime.now()
+
+    # Verificar si ya existe un análisis para este ticker en la fecha actual (comparando solo la fecha)
+    check_query = """
+    SELECT id FROM stock_analysis 
+    WHERE ticker = %s AND analysis_date::date = %s
+    """
+    cur.execute(check_query, (ticker, analysis_date.date()))
+    if cur.fetchone():
+        print(f"Ya existe un análisis para {ticker} en la fecha {analysis_date.date()}.")
+        cur.close()
+        conn.close()
+        return
+
     insert_query = """
     INSERT INTO stock_analysis (
         analysis_date,
@@ -160,23 +184,128 @@ def process_ticker(ticker):
     except Exception as e:
         print(f"Error al procesar {ticker}: {e}")
 
+###############################################
+# Funciones para extracción de noticias
+###############################################
+
+def parse_published_date(published_text):
+    # Se espera un texto tipo "Zacks • 3 months ago"
+    parts = published_text.split("•")
+    if len(parts) >= 2:
+        relative_time = parts[-1].strip()
+    else:
+        relative_time = published_text.strip()
+    parsed_date = dateparser.parse(relative_time)
+    return parsed_date
+
+def get_news_yahoo(ticker):
+    url = f"https://finance.yahoo.com/quote/{ticker}/news"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print(f"❌ ERROR {response.status_code} al obtener noticias de {ticker}")
+        return []
+    
+    soup = BeautifulSoup(response.text, "html.parser")
+    # Buscamos enlaces con la clase 'subtle-link'
+    articles = soup.find_all("a", {"class": "subtle-link"})
+    
+    news_data = []
+    seen_links = set()
+
+    for article in articles[:10]:  # Limitar a 10 noticias
+        title = article.get_text(strip=True) or article.get("title", "").strip()
+        link = article.get("href")
+        
+        if not title:
+            print("⚠️ Advertencia: Se encontró una noticia sin título, se omitirá.")
+            continue
+        
+        if not link.startswith("https"):
+            link = "https://finance.yahoo.com" + link
+        
+        # Si el link no fue procesado, lo omitimos. Necesitamos que lo inserte al verlo por segunda vez por un tema de parsing de fechas
+        if link not in seen_links:
+            seen_links.add(link)
+            continue
+        
+        # Intentamos extraer la fecha de publicación
+        published_date = None
+        footer = article.find_next_sibling("div", class_="footer")
+        if footer:
+            publishing_div = footer.find("div", class_="publishing")
+            if publishing_div:
+                published_text = publishing_div.get_text(strip=True)
+                published_date = parse_published_date(published_text)
+        
+        if not published_date:
+            published_date = datetime.now()
+        
+        news_data.append((ticker, title, link, published_date))
+        print(f"📌 {title} - {link} (Publicado: {published_date})")
+    
+    return news_data
+
+def save_news_to_db(news_list):
+    if not news_list:
+        print("⚠️ No hay noticias para guardar.")
+        return
+    conn = psycopg2.connect(**DB_PARAMS)
+    cursor = conn.cursor()
+    # Crear tabla si no existe; se define UNIQUE en link para evitar duplicados.
+    create_table_query = """
+    CREATE TABLE IF NOT EXISTS news (
+        id SERIAL PRIMARY KEY,
+        ticker VARCHAR(10),
+        title TEXT,
+        link TEXT UNIQUE,
+        published_at TIMESTAMP
+    );
+    """
+    cursor.execute(create_table_query)
+    conn.commit()
+    
+    insert_query = """
+        INSERT INTO news (ticker, title, link, published_at) 
+        VALUES (%s, %s, %s, %s::timestamp)
+        ON CONFLICT (link) DO NOTHING;
+    """
+    for news in news_list:
+        print(f"Insertando noticia para {news[0]} con published_at = {news[3]}")
+        cursor.execute(insert_query, news)
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    print(f"✅ {len(news_list)} noticias procesadas en la DB.")
+
+###############################################
+# Main: Procesar tickers y noticias
+###############################################
+
 def main():
-    # 10 empresas más importantes de USA (según algunos índices, puedes ajustar la lista)
+    # Listas de tickers
     usa_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JNJ", "V", "WMT"]
-    # 10 empresas importantes de Argentina (tickers de la bolsa de Buenos Aires; ajusta según convenga)
-    argentina_tickers = ["GGAL.BA", "YPF.BA", "PAMP.BA", "TEO.BA", "CEPU.BA", "SUPV.BA", "ALUA.BA", "BMA.BA", "EDN.BA", "COME.BA"]
-    # 10 criptomonedas importantes (tickers de Yahoo Finance)
+    argentina_tickers = ["GGAL.BA", "YPF", "PAMP.BA", "TX", "CEPU.BA", "SUPV.BA", "ALUA.BA", "BMA.BA", "EDN.BA", "COME.BA"]
     crypto_tickers = ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD", "SOL-USD", "DOT-USD", "DOGE-USD", "LTC-USD", "MATIC-USD"]
 
-    print("Procesando empresas USA...")
-    for ticker in usa_tickers:
+    all_tickers = usa_tickers + argentina_tickers + crypto_tickers
+
+    # Procesar análisis de cada ticker
+    print("Procesando análisis de activos...")
+    for ticker in all_tickers:
         process_ticker(ticker)
-    print("Procesando empresas Argentina...")
-    for ticker in argentina_tickers:
-        process_ticker(ticker)
-    print("Procesando criptomonedas...")
-    for ticker in crypto_tickers:
-        process_ticker(ticker)
+    
+    # Extraer e insertar noticias para cada ticker
+    print("\nExtrayendo e insertando noticias para cada ticker...")
+    for ticker in all_tickers:
+        print(f"🔄 Obteniendo noticias para {ticker}...")
+        news = get_news_yahoo(ticker)
+        if news:
+            save_news_to_db(news)
+        else:
+            print(f"⚠️ No se encontraron noticias para {ticker}.")
 
 if __name__ == "__main__":
     main()
