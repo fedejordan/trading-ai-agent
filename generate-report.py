@@ -5,6 +5,7 @@ import pandas as pd
 import sqlalchemy
 from sqlalchemy import create_engine
 import psycopg2
+from fpdf import FPDF
 from grok_client import GrokClient
 
 # Configuración de conexión a la DB mediante SQLAlchemy
@@ -77,11 +78,9 @@ def generate_price_chart(df):
     plt.close()
     return chart_filename
 
-def generate_daily_report(df, charts):
+def generate_daily_report_text(df):
     """
-    Genera un reporte diario combinando los datos obtenidos e incluye, para cada ticker,
-    el análisis básico (incluyendo rsi_action y macd_action) y las últimas 5 noticias.
-    Utiliza la API de Grok3 para incluir un análisis adicional y recomendaciones de inversión.
+    Genera el texto base del reporte diario, incluyendo el resumen de análisis y las últimas noticias.
     """
     report = "Reporte Diario de Mercados\n"
     report += f"Fecha: {datetime.now().strftime('%Y-%m-%d')}\n\n"
@@ -105,8 +104,16 @@ def generate_daily_report(df, charts):
                 report += f"      * {news['title']} - {news['link']} (Publicado: {published})\n"
         else:
             report += "   No se encontraron noticias recientes.\n"
-        report += "\n\n"
-        
+        report += "\n"
+    return report
+
+def generate_final_report(df, charts):
+    """
+    Genera un reporte diario combinando el análisis obtenido y utiliza la API de Grok3
+    para generar un análisis adicional y recomendaciones de inversión.
+    """
+    base_report = generate_daily_report_text(df)
+    
     # Preparar prompt para la API de Grok3
     prompt = (
         "Eres un analista financiero experimentado. Con base en los siguientes datos diarios, "
@@ -115,7 +122,7 @@ def generate_daily_report(df, charts):
         " - Recomendaciones claras de compra y venta para el día.\n"
         " - Análisis de tendencias y factores técnicos (incluyendo indicadores, medias móviles, RSI, MACD, etc.).\n"
         " - Comentarios sobre los gráficos adjuntos (distribución de recomendaciones y precios de cierre).\n\n"
-        "Datos:\n" + report +
+        "Datos:\n" + base_report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
 
@@ -133,10 +140,51 @@ def generate_daily_report(df, charts):
 
     # Enviar el prompt y obtener la respuesta
     response = client.send_message(prompt)
-    print(f"Reporte generado: {response}")
+    print(f"Reporte generado por Grok3: {response}")
     
+    # Se incorpora el análisis adicional al reporte
     final_report = response
     return final_report
+
+def create_pdf_report(report_text, charts, output_filename="reporte_diario.pdf"):
+    """
+    Crea un PDF con el reporte, incluyendo el texto formateado y los gráficos.
+    """
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Registra la fuente DejaVu Sans (asegúrate de tener el archivo DejaVuSans.ttf en el mismo directorio o indica la ruta correcta)
+    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
+    pdf.add_font('DejaVu', 'B', 'DejaVuSans-Bold.ttf', uni=True)
+
+    # Portada
+    pdf.add_page()
+    pdf.set_font("DejaVu", "B", 16)
+    pdf.cell(0, 10, "Reporte Diario de Mercados", ln=True, align="C")
+    pdf.set_font("DejaVu", "", 12)
+    pdf.cell(0, 10, f"Fecha: {datetime.now().strftime('%Y-%m-%d')}", ln=True, align="C")
+    pdf.ln(10)
+    
+    # Agregar el texto del reporte
+    pdf.set_font("DejaVu", "", 12)
+    for line in report_text.split('\n'):
+        pdf.multi_cell(0, 8, line)
+    pdf.ln(5)
+    
+    # Agregar gráficos
+    for chart in charts:
+        pdf.add_page()
+        pdf.set_font("DejaVu", "B", 14)
+        # Mostrar el nombre del gráfico como título
+        title = "Distribución de Recomendaciones" if "recomendaciones" in chart else "Precio de Cierre de Activos"
+        pdf.cell(0, 10, title, ln=True, align="C")
+        pdf.ln(5)
+        # Insertar imagen
+        pdf.image(chart, w=pdf.w - 40)
+    
+    # Guardar el PDF
+    pdf.output(output_filename)
+    print(f"Reporte guardado en '{output_filename}'.")
 
 def main():
     # Extraer datos de análisis de la fecha actual
@@ -151,13 +199,10 @@ def main():
     charts = [chart1, chart2]
 
     # Generar reporte diario con análisis adicional
-    daily_report = generate_daily_report(df, charts)
-
-    # Mostrar y guardar el reporte
-    print(daily_report)
-    with open("reporte_diario.txt", "w", encoding="utf-8") as f:
-        f.write(daily_report)
-    print("Reporte guardado en 'reporte_diario.txt'.")
+    daily_report = generate_final_report(df, charts)
+    
+    # Crear PDF con el reporte y los gráficos
+    create_pdf_report(daily_report, charts)
 
 if __name__ == "__main__":
     main()
