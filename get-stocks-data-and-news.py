@@ -6,13 +6,18 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import psycopg2
+from dotenv import load_dotenv
+import os
+
+# Cargar las variables de entorno desde el archivo .env
+load_dotenv()
 
 # Configuración de conexión a la DB
 DB_PARAMS = {
-    "host": "localhost",
-    "database": "stocks_db",
-    "user": "postgres",
-    "password": ""
+    "host": os.getenv("DB_HOST", "localhost"),
+    "database": os.getenv("DB_NAME", "stocks_db"),
+    "user": os.getenv("DB_USER", "postgres"),
+    "password": os.getenv("DB_PASSWORD", "")
 }
 
 ###############################################

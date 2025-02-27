@@ -11,35 +11,51 @@ import psycopg2
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from fpdf import FPDF
-# IMPORTACIÓN OPCIONAL: si se usan gráficos, matplotlib puede ser importado
 import matplotlib.pyplot as plt
-# IMPORTACIÓN DE CLIENTE DE GROK (asegúrate de tener instalado el paquete correspondiente)
 from grok_client import GrokClient
+from dotenv import load_dotenv
+
+# Nuevas importaciones para envío de email y scheduling
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
+import schedule
+import time
 
 ###############################################
 # CONFIGURACIÓN DE BASES DE DATOS
 ###############################################
+
+# Cargar las variables de entorno desde el archivo .env
+load_dotenv()
+
+# Configuración de conexión a la DB
 DB_PARAMS = {
-    "host": "localhost",
-    "database": "stocks_db",
-    "user": "postgres",
-    "password": ""
+    "host": os.getenv("DB_HOST", "localhost"),
+    "database": os.getenv("DB_NAME", "stocks_db"),
+    "user": os.getenv("DB_USER", "postgres"),
+    "password": os.getenv("DB_PASSWORD", "")
 }
-DB_URL = "postgresql://postgres:@localhost/stocks_db"
+DB_URL = os.getenv("DB_URL")
 engine = create_engine(DB_URL)
+
+###############################################
+# CONFIGURACIÓN DE EMAIL
+###############################################
+EMAIL_CONFIG = {
+    "smtp_server": os.getenv("SMTP_SERVER"),
+    "smtp_port": int(os.getenv("SMTP_PORT")),
+    "username": os.getenv("EMAIL_USERNAME"),
+    "password": os.getenv("EMAIL_PASSWORD"),
+    "sender": os.getenv("EMAIL_SENDER"),
+    "recipients": os.getenv("EMAIL_RECIPIENTS").split(",")  # Convertir la cadena en una lista
+}
 
 ###############################################
 # FUNCIONES PARA ANÁLISIS DE INDICADORES
 ###############################################
 def map_score_to_level(score):
-    """
-    Mapea un puntaje numérico a uno de los niveles:
-    -2 -> "strong sell"
-    -1 -> "sell"
-     0 -> "neutral"
-     1 -> "buy"
-     2 -> "strong buy"
-    """
     if score <= -1.5:
         return "strong sell"
     elif score <= -0.5:
@@ -135,7 +151,6 @@ def insert_stock_analysis(total_summary, tech_summary, ma_action, rsi_signal, ma
 
     analysis_date = datetime.now()
 
-    # Verificar si ya existe un análisis para este ticker en la fecha actual (comparando solo la fecha)
     check_query = """
     SELECT id FROM stock_analysis 
     WHERE ticker = %s AND analysis_date::date = %s
@@ -206,7 +221,6 @@ def process_ticker(ticker):
 # FUNCIONES PARA EXTRACCIÓN Y GUARDADO DE NOTICIAS
 ###############################################
 def parse_published_date(published_text):
-    # Se espera un texto tipo "Zacks • 3 months ago"
     parts = published_text.split("•")
     if len(parts) >= 2:
         relative_time = parts[-1].strip()
@@ -218,35 +232,26 @@ def parse_published_date(published_text):
 def get_news_yahoo(ticker):
     url = f"https://finance.yahoo.com/quote/{ticker}/news"
     headers = {"User-Agent": "Mozilla/5.0"}
-    
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
         print(f"❌ ERROR {response.status_code} al obtener noticias de {ticker}")
         return []
-    
     soup = BeautifulSoup(response.text, "html.parser")
-    # Buscamos enlaces con la clase 'subtle-link'
     articles = soup.find_all("a", {"class": "subtle-link"})
-    
     news_data = []
     seen_links = set()
 
-    for article in articles[:10]:  # Limitar a 10 noticias
+    for article in articles[:10]:
         title = article.get_text(strip=True) or article.get("title", "").strip()
         link = article.get("href")
-        
         if not title:
             print("⚠️ Advertencia: Se encontró una noticia sin título, se omitirá.")
             continue
-        
         if not link.startswith("https"):
             link = "https://finance.yahoo.com" + link
-        
-        # Si el link no fue procesado previamente, lo agregamos para marcarlo
         if link not in seen_links:
             seen_links.add(link)
             continue
-        
         published_date = None
         footer = article.find_next_sibling("div", class_="footer")
         if footer:
@@ -256,10 +261,8 @@ def get_news_yahoo(ticker):
                 published_date = parse_published_date(published_text)
         if not published_date:
             published_date = datetime.now()
-        
         news_data.append((ticker, title, link, published_date))
         print(f"📌 {title} - {link} (Publicado: {published_date})")
-    
     return news_data
 
 def save_news_to_db(news_list):
@@ -279,7 +282,6 @@ def save_news_to_db(news_list):
     """
     cursor.execute(create_table_query)
     conn.commit()
-    
     insert_query = """
         INSERT INTO news (ticker, title, link, published_at) 
         VALUES (%s, %s, %s, %s::timestamp)
@@ -288,7 +290,6 @@ def save_news_to_db(news_list):
     for news in news_list:
         print(f"Insertando noticia para {news[0]} con published_at = {news[3]}")
         cursor.execute(insert_query, news)
-    
     conn.commit()
     cursor.close()
     conn.close()
@@ -298,9 +299,6 @@ def save_news_to_db(news_list):
 # FUNCIONES PARA GENERAR REPORTE DIARIO
 ###############################################
 def fetch_stock_analysis_for_today():
-    """
-    Extrae de la tabla stock_analysis los registros correspondientes a la fecha actual.
-    """
     query = """
     SELECT ticker, analysis_date, total_summary, technical_indicators_summary, 
            moving_averages_summary, rsi_action, macd_action, price
@@ -313,9 +311,6 @@ def fetch_stock_analysis_for_today():
     return df
 
 def fetch_latest_news(ticker, limit=5):
-    """
-    Obtiene las últimas 'limit' noticias para un ticker dado desde la tabla news.
-    """
     query = """
     SELECT title, link, published_at
     FROM news
@@ -328,14 +323,9 @@ def fetch_latest_news(ticker, limit=5):
     return news_df
 
 def generate_daily_report_text(df):
-    """
-    Genera el texto base del reporte diario, incluyendo el resumen de análisis y las últimas noticias.
-    """
     report = "Reporte Diario de Mercados\n"
     report += f"Fecha: {datetime.now().strftime('%Y-%m-%d')}\n\n"
     report += "Resumen de Análisis:\n"
-    
-    # Para cada ticker se agregan sus datos y noticias
     for _, row in df.iterrows():
         ticker = row['ticker']
         report += f"- {ticker}:\n"
@@ -343,8 +333,6 @@ def generate_daily_report_text(df):
                   f"(Técnico: {row['technical_indicators_summary']}, " \
                   f"Medias: {row['moving_averages_summary']}).\n"
         report += f"   RSI: {row['rsi_action']}, MACD: {row['macd_action']}. Precio: {row['price']}\n"
-        
-        # Obtener últimas 5 noticias
         news_df = fetch_latest_news(ticker, limit=5)
         if not news_df.empty:
             report += "   Últimas Noticias:\n"
@@ -357,24 +345,17 @@ def generate_daily_report_text(df):
     return report
 
 def generate_final_report(df):
-    """
-    Genera un reporte diario combinando el análisis obtenido y utiliza la API de Grok3
-    para generar un análisis adicional y recomendaciones de inversión.
-    """
     base_report = generate_daily_report_text(df)
-    
-    # Preparar prompt para la API de Grok3
     prompt = (
         "Eres un analista financiero experimentado. Con base en los siguientes datos diarios, "
         "genera un reporte que incluya:\n"
         " - El estado general del mercado.\n"
         " - Recomendaciones claras de compra y venta para el día.\n"
         " - Análisis de tendencias y factores técnicos (incluyendo indicadores, medias móviles, RSI, MACD, etc.).\n"
+        " - Para estos items, hacer una seccion del mercado de USA, otra seccion para el mercado de Argentina y otra para cripto. Si no hay buenas señales de compra o de venta para ese dia, aclararlo.\n"
         "Datos:\n" + base_report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
-
-    # Valores de cookies (ajusta según corresponda)
     cookies = {
         "x-anonuserid": "b4507c57-a948-482e-8136-780c5c84a0b1",
         "x-challenge": "DihL68ZFtBXalCC%2BULwZ%2BmrOQUb7AsS9zTGaDRAv3JpysrX3QnBbllKCCP741TacDN09kDe61LdxQSKeTQahXPTMCuCnRCXE6hB62DzHaaN4yXRiYNeo4jwHqpux7Qzj4i93uDtacIOXO8BUFeI2ATSGFqhmrJM%2Bm8O5uYkhDY%2BwM%2Bq%2Fnbc%3D",
@@ -382,8 +363,6 @@ def generate_final_report(df):
         "sso": "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiMjRmZDc5YzQtZGFjNi00MGI0LWFjZGMtNzJiMGNhMWFlNGE4In0.oitDPbuVQHr8dfcH7zW-VFRLPMMlafpMxLpx1G49Xes",
         "sso-rw": "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiMjRmZDc5YzQtZGFjNi00MGI0LWFjZGMtNzJiMGNhMWFlNGE4In0.oitDPbuVQHr8dfcH7zW-VFRLPMMlafpMxLpx1G49Xes"
     }
-
-    # Inicializar el cliente de Grok3
     client = GrokClient(cookies)
     response = client.send_message(prompt)
     print(f"Reporte generado por Grok3: {response}")
@@ -394,10 +373,6 @@ def generate_final_report(df):
 # FUNCIONES PARA GENERAR PDF CON REPORTE
 ###############################################
 def write_formatted_line(pdf, line, font_size=12, line_height=8):
-    """
-    Escribe una línea de texto en el PDF procesando los segmentos en negrita.
-    Los textos entre ** se escribirán en negrita y el resto en fuente normal.
-    """
     segments = re.split(r'(\*\*.*?\*\*)', line)
     for seg in segments:
         if seg.startswith('**') and seg.endswith('**'):
@@ -409,31 +384,21 @@ def write_formatted_line(pdf, line, font_size=12, line_height=8):
     pdf.ln(line_height)
 
 def create_pdf_report(report_text, output_filename="reporte_diario.pdf"):
-    """
-    Crea un PDF con el reporte, incluyendo el texto formateado.
-    Se procesa Markdown básico para títulos y negrita.
-    """
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
-
-    # Registrar las fuentes DejaVu (asegúrate de tener los archivos en la ruta indicada)
     pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
     pdf.add_font('DejaVu', 'B', 'DejaVuSans-Bold.ttf', uni=True)
-
-    # Portada
     pdf.add_page()
     pdf.set_font("DejaVu", "B", 16)
     pdf.cell(0, 10, "Reporte Diario de Mercados", ln=True, align="C")
     pdf.set_font("DejaVu", "", 12)
     pdf.cell(0, 10, f"Fecha: {datetime.now().strftime('%Y-%m-%d')}", ln=True, align="C")
     pdf.ln(10)
-
     for raw_line in report_text.splitlines():
         line = raw_line.strip()
         if not line:
             pdf.ln(4)
             continue
-
         if line.startswith("### "):
             header = line[4:].strip()
             pdf.set_font("DejaVu", "B", 16)
@@ -451,22 +416,49 @@ def create_pdf_report(report_text, output_filename="reporte_diario.pdf"):
         else:
             write_formatted_line(pdf, line, font_size=12, line_height=8)
         pdf.ln(2)
-
     pdf.ln(5)
     pdf.output(output_filename)
     print(f"Reporte guardado en '{output_filename}'.")
+    return output_filename
 
 ###############################################
-# FUNCIÓN PRINCIPAL UNIFICADA
+# NUEVA FUNCIÓN: ENVÍO DE CORREO CON EL REPORTE
 ###############################################
-def main():
+def send_email(report_file, subject="Reporte Diario de Mercados"):
+    msg = MIMEMultipart()
+    msg['Subject'] = subject
+    msg['From'] = EMAIL_CONFIG["sender"]
+    msg['To'] = ", ".join(EMAIL_CONFIG["recipients"])
+    
+    # Cuerpo del mensaje
+    body = MIMEText("Adjunto se encuentra el reporte diario de mercados.", "plain")
+    msg.attach(body)
+    
+    # Adjuntar el PDF
+    with open(report_file, "rb") as f:
+        part = MIMEApplication(f.read(), Name=os.path.basename(report_file))
+    part['Content-Disposition'] = f'attachment; filename="{os.path.basename(report_file)}"'
+    msg.attach(part)
+    
+    try:
+        with smtplib.SMTP(EMAIL_CONFIG["smtp_server"], EMAIL_CONFIG["smtp_port"]) as server:
+            server.starttls()
+            server.login(EMAIL_CONFIG["username"], EMAIL_CONFIG["password"])
+            server.sendmail(msg['From'], EMAIL_CONFIG["recipients"], msg.as_string())
+        print("Correo enviado exitosamente.")
+    except Exception as e:
+        print(f"Error al enviar el correo: {e}")
+
+###############################################
+# FUNCIÓN PRINCIPAL QUE REALIZA TODO EL PROCESO
+###############################################
+def main_job():
     # Listas de tickers
     usa_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JNJ", "V", "WMT", "BABA", "NVDA", "GOLD", "MELI", "NFLX", "PYPL", "GM", "AAL", "ABNB"]
     argentina_tickers = ["GGAL.BA", "YPFD.BA", "PAMP.BA", "TX", "CEPU.BA", "SUPV.BA", "ALUA.BA", "BMA.BA", "EDN.BA", "COME.BA", "LOMA.BA", "MIRG.BA", "TRAN.BA"]
     crypto_tickers = ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD", "SOL-USD", "DOT-USD", "DOGE-USD", "LTC-USD", "MATIC-USD"]
     all_tickers = usa_tickers + argentina_tickers + crypto_tickers
 
-    # Procesar análisis y noticias para cada ticker
     print("Procesando análisis de activos y extracción de noticias...")
     for ticker in all_tickers:
         process_ticker(ticker)
@@ -477,16 +469,29 @@ def main():
         else:
             print(f"⚠️ No se encontraron noticias para {ticker}.")
 
-    # Generar reporte diario (para la fecha actual)
     print("\nGenerando reporte diario...")
     df = fetch_stock_analysis_for_today()
     if df.empty:
         print("No hay datos de análisis para la fecha de hoy.")
         return
 
-    # Se genera un reporte base y se envía a la API de Grok3 para obtener un análisis adicional
     final_report = generate_final_report(df)
-    create_pdf_report(final_report)
+    pdf_filename = create_pdf_report(final_report)
+    send_email(pdf_filename)
 
+###############################################
+# PROGRAMACIÓN DE LA TAREA: EJECUCIÓN A LAS 11:00 AM DE LUNES A VIERNES
+###############################################
 if __name__ == "__main__":
-    main()
+    main_job()
+    # Programar la tarea para cada día hábil a las 11:00 AM
+    # schedule.every().monday.at("11:00").do(main_job)
+    # schedule.every().tuesday.at("11:00").do(main_job)
+    # schedule.every().wednesday.at("11:00").do(main_job)
+    # schedule.every().thursday.at("11:00").do(main_job)
+    # schedule.every().friday.at("11:00").do(main_job)
+
+    # print("Scheduler iniciado. Esperando la hora programada...")
+    # while True:
+    #     schedule.run_pending()
+    #     time.sleep(60)  # Espera 60 segundos entre chequeos

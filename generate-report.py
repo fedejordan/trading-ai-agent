@@ -8,9 +8,14 @@ import psycopg2
 from fpdf import FPDF
 from grok_client import GrokClient
 import re
+from dotenv import load_dotenv
 
 # Configuración de conexión a la DB mediante SQLAlchemy
-DB_URL = "postgresql://postgres:@localhost/stocks_db"
+# Cargar variables de entorno desde el archivo .env
+load_dotenv()
+
+# Obtener la URL de la base de datos desde la variable de entorno
+DB_URL = os.getenv("DB_URL")
 engine = create_engine(DB_URL)
 
 def fetch_stock_analysis_for_today():
@@ -86,6 +91,7 @@ def generate_final_report(df):
         " - El estado general del mercado.\n"
         " - Recomendaciones claras de compra y venta para el día.\n"
         " - Análisis de tendencias y factores técnicos (incluyendo indicadores, medias móviles, RSI, MACD, etc.).\n"
+        " - Para estos items, hacer una seccion del mercado de USA, otra seccion para el mercado de Argentina y otra para cripto. Si no hay buenas señales de compra o de venta para ese dia, aclararlo.\n"
         "Datos:\n" + base_report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
