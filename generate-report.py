@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 import psycopg2
 from fpdf import FPDF
 from grok_client import GrokClient
+import re
 
 # Configuración de conexión a la DB mediante SQLAlchemy
 DB_URL = "postgresql://postgres:@localhost/stocks_db"
@@ -42,42 +43,6 @@ def fetch_latest_news(ticker, limit=5):
         news_df = pd.read_sql(query, conn, params=(ticker, limit))
     return news_df
 
-def generate_recommendation_chart(df):
-    """
-    Genera un gráfico de barras que muestra la distribución de recomendaciones globales.
-    """
-    categories = ["strong sell", "sell", "neutral", "buy", "strong buy"]
-    recommendation_counts = df['total_summary'].value_counts().reindex(categories, fill_value=0)
-    
-    plt.figure(figsize=(8,6))
-    recommendation_counts.plot(kind='bar', color='skyblue')
-    plt.title("Distribución de Recomendaciones de Mercado")
-    plt.xlabel("Recomendación")
-    plt.ylabel("Cantidad de Activos")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    chart_filename = "recomendaciones.png"
-    plt.savefig(chart_filename)
-    plt.close()
-    return chart_filename
-
-def generate_price_chart(df):
-    """
-    Genera un gráfico de barras que muestra el precio de cierre de cada activo.
-    """
-    plt.figure(figsize=(10,6))
-    df_sorted = df.sort_values(by='price', ascending=False)
-    plt.bar(df_sorted['ticker'], df_sorted['price'], color='green')
-    plt.title("Precio de Cierre de Activos Analizados")
-    plt.xlabel("Ticker")
-    plt.ylabel("Precio")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    chart_filename = "precios.png"
-    plt.savefig(chart_filename)
-    plt.close()
-    return chart_filename
-
 def generate_daily_report_text(df):
     """
     Genera el texto base del reporte diario, incluyendo el resumen de análisis y las últimas noticias.
@@ -107,7 +72,7 @@ def generate_daily_report_text(df):
         report += "\n"
     return report
 
-def generate_final_report(df, charts):
+def generate_final_report(df):
     """
     Genera un reporte diario combinando el análisis obtenido y utiliza la API de Grok3
     para generar un análisis adicional y recomendaciones de inversión.
@@ -121,7 +86,6 @@ def generate_final_report(df, charts):
         " - El estado general del mercado.\n"
         " - Recomendaciones claras de compra y venta para el día.\n"
         " - Análisis de tendencias y factores técnicos (incluyendo indicadores, medias móviles, RSI, MACD, etc.).\n"
-        " - Comentarios sobre los gráficos adjuntos (distribución de recomendaciones y precios de cierre).\n\n"
         "Datos:\n" + base_report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
@@ -146,14 +110,37 @@ def generate_final_report(df, charts):
     final_report = response
     return final_report
 
-def create_pdf_report(report_text, charts, output_filename="reporte_diario.pdf"):
+import re
+from fpdf import FPDF
+from datetime import datetime
+
+def write_formatted_line(pdf, line, font_size=12, line_height=8):
     """
-    Crea un PDF con el reporte, incluyendo el texto formateado y los gráficos.
+    Escribe una línea de texto en el PDF procesando los segmentos en negrita.
+    Los textos entre ** se escribirán en negrita y el resto en fuente normal.
+    """
+    # Dividir la línea en segmentos: los que estén entre ** y los que no.
+    segments = re.split(r'(\*\*.*?\*\*)', line)
+    for seg in segments:
+        if seg.startswith('**') and seg.endswith('**'):
+            # Establecer fuente en negrita y escribir el texto sin los asteriscos
+            pdf.set_font("DejaVu", "B", font_size)
+            pdf.write(line_height, seg[2:-2])
+        else:
+            # Fuente normal
+            pdf.set_font("DejaVu", "", font_size)
+            pdf.write(line_height, seg)
+    pdf.ln(line_height)
+
+def create_pdf_report(report_text, output_filename="reporte_diario.pdf"):
+    """
+    Crea un PDF con el reporte, incluyendo el texto formateado y los gráficos,
+    procesando el Markdown básico para títulos y negrita.
     """
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
-    
-    # Registra la fuente DejaVu Sans (asegúrate de tener el archivo DejaVuSans.ttf en el mismo directorio o indica la ruta correcta)
+
+    # Registrar las fuentes DejaVu (asegúrate de tener los archivos en la ruta indicada)
     pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
     pdf.add_font('DejaVu', 'B', 'DejaVuSans-Bold.ttf', uni=True)
 
@@ -164,23 +151,40 @@ def create_pdf_report(report_text, charts, output_filename="reporte_diario.pdf")
     pdf.set_font("DejaVu", "", 12)
     pdf.cell(0, 10, f"Fecha: {datetime.now().strftime('%Y-%m-%d')}", ln=True, align="C")
     pdf.ln(10)
-    
-    # Agregar el texto del reporte
-    pdf.set_font("DejaVu", "", 12)
-    for line in report_text.split('\n'):
-        pdf.multi_cell(0, 8, line)
+
+    # Procesar y agregar el texto del reporte línea por línea
+    for raw_line in report_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            pdf.ln(4)
+            continue
+
+        # Encabezados de nivel 3 (###)
+        if line.startswith("### "):
+            header = line[4:].strip()
+            pdf.set_font("DejaVu", "B", 16)
+            pdf.cell(0, 10, header, ln=True)
+        # Encabezados de nivel 4 (####)
+        elif line.startswith("#### "):
+            header = line[5:].strip()
+            pdf.set_font("DejaVu", "B", 14)
+            pdf.cell(0, 10, header, ln=True)
+        # Líneas con viñetas
+        elif line.startswith("- ") or line.startswith("• "):
+            # Si la línea empieza con viñeta, la mantenemos y luego procesamos el contenido
+            bullet = "• "
+            content = line[2:].strip() if line.startswith("- ") else line[2:].strip()
+            pdf.set_font("DejaVu", "", 12)
+            pdf.cell(10, 8, bullet, ln=0)
+            # Escribir el contenido con formato en la misma línea
+            # Usamos write_formatted_line para el resto del texto
+            write_formatted_line(pdf, content, font_size=12, line_height=8)
+        else:
+            # Para el resto de líneas, utilizar la función de formato en línea
+            write_formatted_line(pdf, line, font_size=12, line_height=8)
+        pdf.ln(2)
+
     pdf.ln(5)
-    
-    # Agregar gráficos
-    for chart in charts:
-        pdf.add_page()
-        pdf.set_font("DejaVu", "B", 14)
-        # Mostrar el nombre del gráfico como título
-        title = "Distribución de Recomendaciones" if "recomendaciones" in chart else "Precio de Cierre de Activos"
-        pdf.cell(0, 10, title, ln=True, align="C")
-        pdf.ln(5)
-        # Insertar imagen
-        pdf.image(chart, w=pdf.w - 40)
     
     # Guardar el PDF
     pdf.output(output_filename)
@@ -193,16 +197,11 @@ def main():
         print("No hay datos de análisis para la fecha de hoy.")
         return
 
-    # Generar gráficos y guardar los archivos
-    chart1 = generate_recommendation_chart(df)
-    chart2 = generate_price_chart(df)
-    charts = [chart1, chart2]
-
     # Generar reporte diario con análisis adicional
-    daily_report = generate_final_report(df, charts)
+    daily_report = generate_final_report(df)
     
     # Crear PDF con el reporte y los gráficos
-    create_pdf_report(daily_report, charts)
+    create_pdf_report(daily_report)
 
 if __name__ == "__main__":
     main()
