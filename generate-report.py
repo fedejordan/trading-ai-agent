@@ -5,7 +5,6 @@ import pandas as pd
 import sqlalchemy
 from sqlalchemy import create_engine
 import psycopg2
-# Importar la librería deepseek (asegúrate de tenerla instalada)
 from grok_client import GrokClient
 
 # Configuración de conexión a la DB mediante SQLAlchemy
@@ -26,6 +25,21 @@ def fetch_stock_analysis_for_today():
     today = date.today()
     df = pd.read_sql(query, engine, params=(today,))
     return df
+
+def fetch_latest_news(ticker, limit=5):
+    """
+    Obtiene las últimas 'limit' noticias para un ticker dado desde la tabla news.
+    """
+    query = """
+    SELECT title, link, published_at
+    FROM news
+    WHERE ticker = %s
+    ORDER BY published_at DESC
+    LIMIT %s;
+    """
+    with engine.connect() as conn:
+        news_df = pd.read_sql(query, conn, params=(ticker, limit))
+    return news_df
 
 def generate_recommendation_chart(df):
     """
@@ -65,32 +79,47 @@ def generate_price_chart(df):
 
 def generate_daily_report(df, charts):
     """
-    Genera un reporte diario combinando los datos obtenidos y utiliza la API de Deepseek r1
-    para incluir un análisis adicional y recomendaciones de inversión.
+    Genera un reporte diario combinando los datos obtenidos e incluye, para cada ticker,
+    el análisis básico (incluyendo rsi_action y macd_action) y las últimas 5 noticias.
+    Utiliza la API de Grok3 para incluir un análisis adicional y recomendaciones de inversión.
     """
-    # Resumen básico a partir de la DB
     report = "Reporte Diario de Mercados\n"
     report += f"Fecha: {datetime.now().strftime('%Y-%m-%d')}\n\n"
     report += "Resumen de Análisis:\n"
+    
+    # Para cada ticker, se agregan sus datos y las últimas noticias
     for _, row in df.iterrows():
-        report += (f"- {row['ticker']}: Recomendación Global: {row['total_summary']} "
-                   f"(Técnico: {row['technical_indicators_summary']}, Medias: {row['moving_averages_summary']}). "
-                   f"Precio: {row['price']}\n")
-    report += "\nSe adjuntan gráficos de distribución de recomendaciones y precios de activos.\n\n"
-
-    # Preparar prompt para la API de Deepseek r1
+        ticker = row['ticker']
+        report += f"- {ticker}:\n"
+        report += f"   Recomendación Global: {row['total_summary']} " \
+                  f"(Técnico: {row['technical_indicators_summary']}, " \
+                  f"Medias: {row['moving_averages_summary']}).\n"
+        report += f"   RSI: {row['rsi_action']}, MACD: {row['macd_action']}. Precio: {row['price']}\n"
+        
+        # Obtener últimas 5 noticias
+        news_df = fetch_latest_news(ticker, limit=5)
+        if not news_df.empty:
+            report += "   Últimas Noticias:\n"
+            for _, news in news_df.iterrows():
+                published = pd.to_datetime(news['published_at']).strftime('%Y-%m-%d')
+                report += f"      * {news['title']} - {news['link']} (Publicado: {published})\n"
+        else:
+            report += "   No se encontraron noticias recientes.\n"
+        report += "\n\n"
+        
+    # Preparar prompt para la API de Grok3
     prompt = (
         "Eres un analista financiero experimentado. Con base en los siguientes datos diarios, "
         "genera un reporte que incluya:\n"
         " - El estado general del mercado.\n"
         " - Recomendaciones claras de compra y venta para el día.\n"
-        " - Análisis de tendencias y factores técnicos (considerando indicadores, medias móviles, RSI, MACD, etc.).\n"
+        " - Análisis de tendencias y factores técnicos (incluyendo indicadores, medias móviles, RSI, MACD, etc.).\n"
         " - Comentarios sobre los gráficos adjuntos (distribución de recomendaciones y precios de cierre).\n\n"
         "Datos:\n" + report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
 
-    # Your cookie values
+    # Valores de cookies (ajusta según corresponda)
     cookies = {
         "x-anonuserid": "b4507c57-a948-482e-8136-780c5c84a0b1",
         "x-challenge": "DihL68ZFtBXalCC%2BULwZ%2BmrOQUb7AsS9zTGaDRAv3JpysrX3QnBbllKCCP741TacDN09kDe61LdxQSKeTQahXPTMCuCnRCXE6hB62DzHaaN4yXRiYNeo4jwHqpux7Qzj4i93uDtacIOXO8BUFeI2ATSGFqhmrJM%2Bm8O5uYkhDY%2BwM%2Bq%2Fnbc%3D",
@@ -99,12 +128,12 @@ def generate_daily_report(df, charts):
         "sso-rw": "eyJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiMjRmZDc5YzQtZGFjNi00MGI0LWFjZGMtNzJiMGNhMWFlNGE4In0.oitDPbuVQHr8dfcH7zW-VFRLPMMlafpMxLpx1G49Xes"
     }
 
-    # Initialize the client
+    # Inicializar el cliente de Grok3
     client = GrokClient(cookies)
 
-    # Send a message and get response
+    # Enviar el prompt y obtener la respuesta
     response = client.send_message(prompt)
-    print(f"Reporte: {response}")
+    print(f"Reporte generado: {response}")
     
     final_report = response
     return final_report

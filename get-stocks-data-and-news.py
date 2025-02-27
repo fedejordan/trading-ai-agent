@@ -286,8 +286,8 @@ def save_news_to_db(news_list):
 
 def main():
     # Listas de tickers
-    usa_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JNJ", "V", "WMT"]
-    argentina_tickers = ["GGAL.BA", "YPF", "PAMP.BA", "TX", "CEPU.BA", "SUPV.BA", "ALUA.BA", "BMA.BA", "EDN.BA", "COME.BA"]
+    usa_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JNJ", "V", "WMT", "BABA", "NVDA", "GOLD", "MELI", "NFLX", "PYPL", "GM", "AAL", "ABNB"]
+    argentina_tickers = ["GGAL.BA", "YPFD.BA", "PAMP.BA", "TX", "CEPU.BA", "SUPV.BA", "ALUA.BA", "BMA.BA", "EDN.BA", "COME.BA", "LOMA.BA", "MIRG.BA", "TRAN.BA"]
     crypto_tickers = ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD", "SOL-USD", "DOT-USD", "DOGE-USD", "LTC-USD", "MATIC-USD"]
 
     all_tickers = usa_tickers + argentina_tickers + crypto_tickers
