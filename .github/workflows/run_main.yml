@@ -24,3 +24,21 @@ jobs:
 
       - name: Run Python script
         run: python main.py
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
+          X_ANONUSERID: ${{ secrets.X_ANONUSERID }}
+          X_CHALLENGE: ${{ secrets.X_CHALLENGE }}
+          X_SIGNATURE: ${{ secrets.X_SIGNATURE }}
+          SSO: ${{ secrets.SSO }}
+          SSO_RW: ${{ secrets.SSO_RW }}
