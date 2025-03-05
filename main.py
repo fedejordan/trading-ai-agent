@@ -361,7 +361,7 @@ def generate_final_report(df):
     client = genai.Client(api_key=api_key)
     response = client.models.generate_content(
         model="gemini-2.0-flash", contents=prompt
-    )
+    ).text
     print(f"Reporte generado por Gemini: {response}")
     final_report = response
     return final_report
