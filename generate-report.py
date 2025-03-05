@@ -6,7 +6,7 @@ import sqlalchemy
 from sqlalchemy import create_engine
 import psycopg2
 from fpdf import FPDF
-from grok_client import GrokClient
+from google import genai
 import re
 from dotenv import load_dotenv
 
@@ -82,9 +82,8 @@ def generate_final_report(df):
     Genera un reporte diario combinando el análisis obtenido y utiliza la API de Grok3
     para generar un análisis adicional y recomendaciones de inversión.
     """
+    # Preparar prompt para la API de Gemini
     base_report = generate_daily_report_text(df)
-    
-    # Preparar prompt para la API de Grok3
     prompt = (
         "Eres un analista financiero experimentado. Con base en los siguientes datos diarios, "
         "genera un reporte que incluya:\n"
@@ -95,26 +94,15 @@ def generate_final_report(df):
         "Datos:\n" + base_report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
-
-    # Valores de cookies (ajusta según corresponda)
-    cookies = {
-        "x-anonuserid": os.getenv("X_ANONUSERID"),
-        "x-challenge": os.getenv("X_CHALLENGE"),
-        "x-signature": os.getenv("X_SIGNATURE"),
-        "sso": os.getenv("SSO"),
-        "sso-rw": os.getenv("SSO_RW")
-    }
-
-    # Inicializar el cliente de Grok3
-    client = GrokClient(cookies)
-
-    # Enviar el prompt y obtener la respuesta
-    response = client.send_message(prompt)
-    print(f"Reporte generado por Grok3: {response}")
-    
-    # Se incorpora el análisis adicional al reporte
+    api_key = os.getenv("GEMINI_KEY")
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash", contents=prompt
+    ).text
+    print(f"Reporte generado por Gemini: {response}")
     final_report = response
     return final_report
+
 
 import re
 from fpdf import FPDF
@@ -198,15 +186,18 @@ def create_pdf_report(report_text, output_filename="reporte_diario.pdf"):
 
 def main():
     # Extraer datos de análisis de la fecha actual
+    print("Generando reporte diario...")
     df = fetch_stock_analysis_for_today()
     if df.empty:
         print("No hay datos de análisis para la fecha de hoy.")
         return
 
     # Generar reporte diario con análisis adicional
+    print("Generando reporte final...")
     daily_report = generate_final_report(df)
     
     # Crear PDF con el reporte y los gráficos
+    print("Creando PDF con el reporte...")
     create_pdf_report(daily_report)
 
 if __name__ == "__main__":

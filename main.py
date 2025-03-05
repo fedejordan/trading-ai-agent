@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from fpdf import FPDF
 import matplotlib.pyplot as plt
-from grok_client import GrokClient
+from google import genai
 from dotenv import load_dotenv
 
 # Nuevas importaciones para envío de email y scheduling
@@ -357,18 +357,15 @@ def generate_final_report(df):
         "Datos:\n" + base_report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
-    cookies = {
-        "x-anonuserid": os.getenv("X_ANONUSERID"),
-        "x-challenge": os.getenv("X_CHALLENGE"),
-        "x-signature": os.getenv("X_SIGNATURE"),
-        "sso": os.getenv("SSO"),
-        "sso-rw": os.getenv("SSO_RW")
-    }
-    client = GrokClient(cookies)
-    response = client.send_message(prompt)
-    print(f"Reporte generado por Grok3: {response}")
+    api_key = os.getenv("GEMINI_KEY")
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash", contents=prompt
+    )
+    print(f"Reporte generado por Gemini: {response}")
     final_report = response
     return final_report
+
 
 ###############################################
 # FUNCIONES PARA GENERAR PDF CON REPORTE
@@ -451,6 +448,30 @@ def send_email(report_file, subject="Reporte Diario de Mercados"):
         print(f"Error al enviar el correo: {e}")
 
 ###############################################
+# CONFIGURACIÓN DE TWITTER
+###############################################
+TWITTER_CONFIG = {
+    "api_key": os.getenv("TWITTER_API_KEY"),
+    "api_secret_key": os.getenv("TWITTER_API_SECRET_KEY"),
+    "access_token": os.getenv("TWITTER_ACCESS_TOKEN"),
+    "access_token_secret": os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+}
+
+###############################################
+# FUNCIONES PARA PUBLICAR TWEETS
+###############################################
+def post_tweet(message):
+    auth = tweepy.OAuthHandler(TWITTER_CONFIG["api_key"], TWITTER_CONFIG["api_secret_key"])
+    auth.set_access_token(TWITTER_CONFIG["access_token"], TWITTER_CONFIG["access_token_secret"])
+    api = tweepy.API(auth)
+    try:
+        api.update_status(message)
+        print("Tweet publicado exitosamente.")
+    except Exception as e:
+        print(f"Error al publicar el tweet: {e}")
+
+
+###############################################
 # FUNCIÓN PRINCIPAL QUE REALIZA TODO EL PROCESO
 ###############################################
 def main_job():
@@ -479,6 +500,10 @@ def main_job():
     final_report = generate_final_report(df)
     pdf_filename = create_pdf_report(final_report)
     send_email(pdf_filename)
+
+    # Publicar tweet tras completar el proceso
+    tweet_message = f"Reporte Diario de Mercados generado para {datetime.now().strftime('%Y-%m-%d')}. Revisa tu correo para más detalles."
+    # post_tweet(tweet_message)
 
 ###############################################
 # PROGRAMACIÓN DE LA TAREA: EJECUCIÓN A LAS 11:00 AM DE LUNES A VIERNES
