@@ -42,3 +42,4 @@ jobs:
           X_SIGNATURE: ${{ secrets.X_SIGNATURE }}
           SSO: ${{ secrets.SSO }}
           SSO_RW: ${{ secrets.SSO_RW }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
