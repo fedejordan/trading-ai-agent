@@ -485,6 +485,21 @@ def post_tweet(message):
 # FUNCIÓN PRINCIPAL QUE REALIZA TODO EL PROCESO
 ###############################################
 def main_job():
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user", "content": "Hello"},
+        ],
+        stream=False
+    )
+
+    print(response.choices[0].message.content)
+    return
+
     # Listas de tickers
     usa_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JNJ", "V", "WMT", "BABA", "NVDA", "GOLD", "MELI", "NFLX", "PYPL", "GM", "AAL", "ABNB"]
     argentina_tickers = ["GGAL.BA", "YPFD.BA", "PAMP.BA", "TX", "CEPU.BA", "SUPV.BA", "ALUA.BA", "BMA.BA", "EDN.BA", "COME.BA", "LOMA.BA", "MIRG.BA", "TRAN.BA"]
