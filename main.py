@@ -359,17 +359,22 @@ def generate_final_report(df):
     )
     api_key = os.getenv("DEEPSEEK_API_KEY")
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": "Eres un analista financiero experimentado. "},
-            {"role": "user", "content": prompt},
-        ],
-        stream=False
-    )
 
-    final_report = response.choices[0].message.content
-    return final_report
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "Eres un analista financiero experimentado. "},
+                {"role": "user", "content": prompt},
+            ],
+            stream=False
+        )
+        print(f"response: {response}")
+        final_report = response.choices[0].message.content
+        return final_report
+    except Exception as e:
+        print(f"Error en la API de OpenAI: {e}")
+        return "error"
 
 
 ###############################################
