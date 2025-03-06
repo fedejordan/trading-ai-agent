@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import openai
 from openai import OpenAI
 from dotenv import load_dotenv
+from google import genai
 
 # Nuevas importaciones para envío de email y scheduling
 import smtplib
@@ -381,7 +382,7 @@ def generate_final_report(df):
         
         print(f"response: {response}")
         final_report = response.choices[0].message.content
-        return final_report
+        return final_report + "\n\n(Generado con Deepseek AI)"
     except openai.APIConnectionError as e:
         print("The server could not be reached")
         print(e.__cause__)  # an underlying Exception, likely raised within httpx.
@@ -395,6 +396,16 @@ def generate_final_report(df):
         print(f"Error de validación: {e}")
     except Exception as e:
         print(f"Error inesperado: {e}")
+    
+    return generate_with_gemini(prompt)
+    
+def generate_with_gemini(prompt):
+    api_key = os.getenv("GEMINI_KEY")
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash", contents="Eres un analista financiero experimentado. " + prompt
+    )
+    return response.text + "\n\n(Generado con Gemini AI)"
 
 
 ###############################################
