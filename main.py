@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from fpdf import FPDF
 import matplotlib.pyplot as plt
-from google import genai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 # Nuevas importaciones para envío de email y scheduling
@@ -348,7 +348,7 @@ def generate_daily_report_text(df):
 def generate_final_report(df):
     base_report = generate_daily_report_text(df)
     prompt = (
-        "Eres un analista financiero experimentado. Con base en los siguientes datos diarios, "
+        "Con base en los siguientes datos diarios, "
         "genera un reporte que incluya:\n"
         " - El estado general del mercado.\n"
         " - Recomendaciones claras de compra y venta para el día.\n"
@@ -357,13 +357,18 @@ def generate_final_report(df):
         "Datos:\n" + base_report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
-    api_key = os.getenv("GEMINI_KEY")
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model="gemini-2.0-flash", contents=prompt
-    ).text
-    print(f"Reporte generado por Gemini: {response}")
-    final_report = response
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    response = client.chat.completions.create(
+        model="deepseek-reasoner",
+        messages=[
+            {"role": "system", "content": "Eres un analista financiero experimentado. "},
+            {"role": "user", "content": prompt},
+        ],
+        stream=False
+    )
+
+    final_report = response.choices[0].message.content
     return final_report
 
 
