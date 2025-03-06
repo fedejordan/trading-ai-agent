@@ -95,6 +95,10 @@ def generate_final_report(df):
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
 
+    # Guardar el contenido de prompt en un archivo de texto
+    with open("prompt.txt", "w") as file:
+        file.write(prompt)
+
     api_key = os.getenv("DEEPSEEK_API_KEY")
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
     try:

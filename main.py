@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from fpdf import FPDF
 import matplotlib.pyplot as plt
+import openai
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -357,6 +358,11 @@ def generate_final_report(df):
         "Datos:\n" + base_report +
         "\nEl reporte debe ser conciso, claro y útil para tomar decisiones de inversión diaria."
     )
+
+    # Guardar el contenido de prompt en un archivo de texto
+    with open("prompt.txt", "w") as file:
+        file.write(prompt)
+
     api_key = os.getenv("DEEPSEEK_API_KEY")
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
@@ -369,12 +375,26 @@ def generate_final_report(df):
             ],
             stream=False
         )
+
+        if not response:
+            raise ValueError("Respuesta de OpenAI vacía o None")
+        
         print(f"response: {response}")
         final_report = response.choices[0].message.content
         return final_report
+    except openai.APIConnectionError as e:
+        print("The server could not be reached")
+        print(e.__cause__)  # an underlying Exception, likely raised within httpx.
+    except openai.RateLimitError as e:
+        print("A 429 status code was received; we should back off a bit.")
+    except openai.APIStatusError as e:
+        print("Another non-200-range status code was received")
+        print(e.status_code)
+        print(e.response)
+    except ValueError as e:
+        print(f"Error de validación: {e}")
     except Exception as e:
-        print(f"Error en la API de OpenAI: {e}")
-        return "error"
+        print(f"Error inesperado: {e}")
 
 
 ###############################################
@@ -485,21 +505,6 @@ def post_tweet(message):
 # FUNCIÓN PRINCIPAL QUE REALIZA TODO EL PROCESO
 ###############################################
 def main_job():
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant"},
-            {"role": "user", "content": "Hello"},
-        ],
-        stream=False
-    )
-
-    print(response.choices[0].message.content)
-    return
-
     # Listas de tickers
     usa_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JNJ", "V", "WMT", "BABA", "NVDA", "GOLD", "MELI", "NFLX", "PYPL", "GM", "AAL", "ABNB"]
     argentina_tickers = ["GGAL.BA", "YPFD.BA", "PAMP.BA", "TX", "CEPU.BA", "SUPV.BA", "ALUA.BA", "BMA.BA", "EDN.BA", "COME.BA", "LOMA.BA", "MIRG.BA", "TRAN.BA"]

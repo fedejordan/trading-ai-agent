@@ -36,3 +36,9 @@ jobs:
         with:
           name: market-report
           path: reporte_diario.pdf
+      
+      - name: Archive prompt
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-report-prompt
+          path: prompt.txt

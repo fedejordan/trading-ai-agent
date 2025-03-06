@@ -44,9 +44,15 @@ jobs:
           SSO_RW: ${{ secrets.SSO_RW }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          
+
       - name: Archive report
         uses: actions/upload-artifact@v4
         with:
           name: market-report
           path: reporte_diario.pdf
+      
+      - name: Archive prompt
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-report-prompt
+          path: prompt.txt
