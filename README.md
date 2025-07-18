@@ -1,70 +1,76 @@
 # 📈 Trading AI Agent
 
-Este proyecto es un agente de inteligencia artificial para el análisis de acciones argentinas y CEDEARs. Realiza la recopilación de datos históricos, cálculo de indicadores técnicos, monitoreo de noticias y generación de recomendaciones de compra/venta.
+This project is an artificial intelligence agent for analyzing Argentine stocks and CEDEARs. It collects historical data, calculates technical indicators, monitors news, and generates buy/sell recommendations.
 
-## 🚀 Características
-- 📊 **Obtención de Datos:** Descarga datos históricos de acciones y CEDEARs desde Yahoo Finance.
-- 📈 **Análisis Técnico:** Calcula indicadores como RSI, MACD, EMA, y Bollinger Bands.
-- 📰 **Monitoreo de Noticias:** Extrae titulares de Investing.com para cada ticker.
-- 🤖 **Señales de Trading:** Genera señales de compra/venta basadas en análisis técnico y sentimiento de noticias.
-- 🛠️ **Almacenamiento:** Guarda los datos en PostgreSQL y CSV.
+## 🚀 Features
 
-## 📂 Estructura del Proyecto
+* 📈 **Data Collection:** Downloads historical stock and CEDEAR data from Yahoo Finance.
+* 📈 **Technical Analysis:** Calculates indicators such as RSI, MACD, EMA, and Bollinger Bands.
+* 📰 **News Monitoring:** Extracts headlines from Investing.com for each ticker.
+* 🤖 **Trading Signals:** Generates buy/sell signals based on technical analysis and news sentiment.
+* 🛠️ **Storage:** Saves data in PostgreSQL and CSV.
+
+## 📂 Project Structure
+
 ```
 trading-ai-agent/
-│── env/                   # Entorno virtual de Python
-│── main.py                # Script principal
-│── requirements.txt       # Dependencias del proyecto
-│── config.py              # Configuración de la base de datos y API keys
-│── data/                  # Archivos CSV de respaldo
-│── README.md              # Documentación del proyecto
+│── env/                   # Python virtual environment
+│── main.py                # Main script
+│── requirements.txt       # Project dependencies
+│── config.py              # Database and API key configuration
+│── data/                  # Backup CSV files
+│── README.md              # Project documentation
 ```
 
-## 🔧 Instalación y Configuración
-### 1️⃣ Clonar el repositorio
+## 🔧 Installation and Setup
+
+### 1️⃣ Clone the repository
+
 ```bash
-git clone https://github.com/tu_usuario/trading-ai-agent.git
+git clone https://github.com/your_username/trading-ai-agent.git
 cd trading-ai-agent
 ```
 
-### 2️⃣ Crear y activar un entorno virtual
+### 2️⃣ Create and activate a virtual environment
+
 ```bash
 python3 -m venv env
-source env/bin/activate   # En macOS/Linux
-env\Scripts\activate      # En Windows
+source env/bin/activate   # On macOS/Linux
+env\Scripts\activate      # On Windows
 ```
 
-### 3️⃣ Instalar dependencias
+### 3️⃣ Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4️⃣ Configurar la base de datos PostgreSQL
-Modifica `config.py` con tus credenciales de base de datos.
+### 4️⃣ Configure the PostgreSQL database
 
-### 5️⃣ Ejecutar el script principal
+Edit `config.py` with your database credentials.
+
+### 5️⃣ Run the main script
+
 ```bash
 python main.py
 ```
 
-## 📊 Uso del Proyecto
-- Se ejecutará la descarga de datos históricos.
-- Se calcularán los indicadores técnicos.
-- Se monitorearán las noticias.
-- Se generarán señales de trading y se almacenarán en la base de datos.
+## 📊 Using the Project
 
-## 📌 Próximos Pasos
-- 🔍 Mejorar el scraping de noticias para obtener más datos relevantes.
-- 📬 Implementar notificaciones en Telegram para alertas de trading.
-- 🤖 Integrar Machine Learning para mejorar predicciones de compra/venta.
+* Historical data will be downloaded.
+* Technical indicators will be calculated.
+* News will be monitored.
+* Trading signals will be generated and stored in the database.
 
-## 🛠 Tecnologías Usadas
-- **Python** (pandas, yfinance, pandas-ta, SQLAlchemy, BeautifulSoup)
-- **PostgreSQL** (Almacenamiento de datos históricos)
-- **Yahoo Finance API** (Fuente de datos financieros)
-- **Investing.com Scraper** (Noticias relevantes del mercado)
+## 📌 Next Steps
 
----
+* 🔍 Improve news scraping for more relevant data.
+* 📬 Implement Telegram notifications for trading alerts.
+* 🤖 Integrate Machine Learning to improve buy/sell predictions.
 
-📧 Para soporte o consultas, contáctame en [tu_email@example.com](mailto:tu_email@example.com).
+## 🛠 Technologies Used
 
+* **Python** (pandas, yfinance, pandas-ta, SQLAlchemy, BeautifulSoup)
+* **PostgreSQL** (Storage of historical data)
+* **Yahoo Finance API** (Source of financial data)
+* **Investing.com Scraper** (Relevant market news)
